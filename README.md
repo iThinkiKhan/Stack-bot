@@ -24,6 +24,7 @@ Head - Case for 2.8" IL19341, bottom power by DorffMeister
 These do not fit together. Rough up the horns and superglue em.
 
 **Software**
+
 Development Environment
 IDE: VS Code + PlatformIO
 Framework: Arduino
