@@ -47,4 +47,73 @@ Role: Fallback or complex reasoning tasks.
 Secrets Management
 API keys and WiFi credentials are stored in a non-tracked src/Secrets.h file to prevent accidental leaks.
 
+**Wiring**
+This is a "shared SPI" system as much as possible to keep wiring manageable. The screen is a shared SPI, meaning touch, screen and SD card all use the same same MOSI MISO and SCK, but they have different CS pins to distinguish them.
+
+_Build one - prototyping with breadboard_
+
+Several inputs need to share common lines, so we are going to use a breadboard to break out pins for prototyping.
+--------------------------------------------------------------
+Orange - top red rail - 3.3v
+Red - top blue rail - 5v
+Black - bottom red rail - Ground - double up for clearer signals
+
+SPI Hub BOTTOM SIDE:
+
+SCK Clock - blue wire- GPIO 12 - Row 1 bottom
+MOSI - brown wire GPIO 11 Row 2 bottom
+MISO - yellow wire GPIO 13 Row 10 bottom
+
+I2S Hub UPPER SIDE:
+
+BCLK - audio clock - purple wire GPIO 4 Row 1 top
+LRC - word select - white wire GPIO 5 Row 5 top
+
+CS Screen - purple wire GPIO 10
+DC red wire gpio 9
+RST green wire gpio 3
+T_CS (Touch): -> GPIO 14 (Direct)
+LED: -> 3.3V Hub (Or 5V if you want max brightness, but 3.3V is safer).
+
+2. The Microphone (INMP441)
+VDD: -> 3.3V Hub (Do NOT use 5V, it will fry).
+GND: -> GND Hub
+SCK: -> I2S Hub Row D (BCLK)
+WS: -> I2S Hub Row E (LRC)
+SD: -> GPIO 7 (Direct - Data In).
+L/R: -> GND Hub (This sets it to "Left Channel" or Mono).
+
+3. The Amplifier (MAX98357A)
+VIN: -> 5V Hub (Louder volume).
+GND: -> GND Hub
+BCLK: -> I2S Hub Row D (BCLK)
+LRC: -> I2S Hub Row E (LRC)
+DIN: -> GPIO 6 (Direct - Data Out).
+GAIN: -> (Leave empty or connect to GND via resistor for lower volume).
+SD: -> (Leave empty, it has an internal pull-up to turn on).
+
+4. The Servos (Muscles)
+Brown: -> GND Hub
+Red: -> 5V Hub
+Orange (Pan): -> GPIO 1
+Orange (Tilt): -> GPIO 2
+2 100uF capacitors - long leg 5v, short striped leg to ground. 1 for each servo.
+
+Summary of N16R8 Unique Pins
+GPIO 1: Servo Pan
+GPIO 2: Servo Tilt
+GPIO 4: Audio BCLK (Shared)
+GPIO 5: Audio LRC (Shared)
+GPIO 6: Audio Amp Data
+GPIO 7: Audio Mic Data
+GPIO 9: Screen DC
+GPIO 10: Screen CS
+GPIO 11: SPI MOSI (Shared)
+GPIO 12: SPI SCK (Shared)
+GPIO 13: SPI MISO (Shared)
+GPIO 14: Touch CS
+GPIO 21: Screen Reset
+
+
+
 
