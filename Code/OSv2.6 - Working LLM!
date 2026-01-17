@@ -1,0 +1,342 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include "Audio.h" 
+#include <TFT_eSPI.h>
+#include <ESP32Servo.h>
+#include <driver/i2s.h>
+#include "Secrets.h"
+
+// ==============================
+//      PROJECT: FRANKEN-CHAN ("FRANK")
+//      VERSION: 2.7 (Stable / Free Tier)
+// ==============================
+
+// --- HARDWARE ---
+#define I2S_BCLK      4 
+#define I2S_LRC       5 
+#define I2S_DOUT      6  
+#define I2S_DIN       7  
+#define SERVO_PIN_X   1 
+#define SERVO_PIN_Y   2  
+#define SCREEN_RST    21 
+
+// --- GLOBALS ---
+Audio *audio = NULL; 
+TFT_eSPI tft = TFT_eSPI(); 
+Servo servoX;
+Servo servoY;
+
+#define I2S_PORT I2S_NUM_0
+#define BUFFER_LEN 512
+int16_t sBuffer[BUFFER_LEN];
+
+// --- STATE ---
+String lastStatus = ""; 
+unsigned long lastServoMove = 0;
+bool inSpeakerMode = false;
+bool driverInstalled = false; // <--- FIX FOR RED ERRORS
+unsigned long micCooldown = 0;
+
+// --- THREADING ---
+TaskHandle_t aiTaskHandle = NULL;
+bool aiRequestPending = false;     
+bool aiResponseReady = false;      
+String globalResponse = "";        
+
+// --- MEMORY ---
+DynamicJsonDocument chatDoc(4096); 
+DynamicJsonDocument responseDoc(8192);
+
+// --- GEMINI CONFIG ---
+// Hardoded to free model
+String currentModel = "models/gemini-flash-latest"; 
+
+// ==============================
+//      DRIVER MANAGEMENT
+// ==============================
+void enterMicMode() {
+    if (!inSpeakerMode) return; 
+
+    // 1. DELETE AUDIO BRAIN
+    if (audio != NULL) {
+        delete audio;
+        audio = NULL;
+        driverInstalled = false; // The library removed the driver for us
+    } 
+    
+    // 2. SAFETY CLEANUP (Only if still installed)
+    if (driverInstalled) {
+        i2s_driver_uninstall(I2S_PORT);
+        driverInstalled = false;
+    }
+
+    // 3. Mute Speaker
+    pinMode(I2S_DOUT, OUTPUT);
+    digitalWrite(I2S_DOUT, LOW); 
+
+    // 4. Install Mic Driver
+    i2s_config_t i2s_config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+        .sample_rate = 16000,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+        .communication_format = I2S_COMM_FORMAT_I2S,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 4,
+        .dma_buf_len = 512,
+        .use_apll = false,
+        .tx_desc_auto_clear = false,
+        .fixed_mclk = 0
+    };
+    i2s_pin_config_t pin_config = {
+        .bck_io_num = I2S_BCLK,
+        .ws_io_num = I2S_LRC,
+        .data_out_num = -1,
+        .data_in_num = I2S_DIN
+    };
+    
+    i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
+    i2s_set_pin(I2S_PORT, &pin_config);
+    i2s_zero_dma_buffer(I2S_PORT);
+    
+    driverInstalled = true; // Mark as installed
+    inSpeakerMode = false;
+    micCooldown = millis() + 1000; 
+    Serial.println("--- Mic Mode Active ---");
+}
+
+void enterSpeakerMode() {
+    if (inSpeakerMode) return; 
+
+    // 1. Uninstall Mic Driver
+    if (driverInstalled) {
+        i2s_driver_uninstall(I2S_PORT);
+        driverInstalled = false;
+    }
+    
+    // 2. Create Audio Brain
+    audio = new Audio();
+    audio->setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+    audio->setVolume(18);     
+    audio->forceMono(true);   
+    
+    // 3. Buffer Settings
+    if(psramFound()){
+        audio->setBufsize(64 * 1024, -1); // 64KB is plenty, 100KB might be greedy
+    }
+    
+    driverInstalled = true; // The library installed the driver
+    inSpeakerMode = true;
+    Serial.println("--- Speaker Mode Active ---");
+}
+
+// ==============================
+//      UI 
+// ==============================
+void drawFace(String status, uint16_t color) {
+    if (status == lastStatus) return;
+    lastStatus = status;
+
+    tft.fillScreen(TFT_BLACK);
+    
+    int w = tft.width();
+    int h = tft.height();
+    int eyeRadius = w / 10;
+    int eyeY = h / 3;
+    int leftEyeX = w / 4;
+    int rightEyeX = (w * 3) / 4;
+    int mouthY = (h * 2) / 3;
+
+    tft.setTextColor(color, TFT_BLACK);
+    tft.setTextSize(2);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString(status, w / 2, h - 30);
+
+    if(status == "LISTENING" || status == "ONLINE" || status == "BOOTING...") {
+        tft.fillCircle(leftEyeX, eyeY, eyeRadius, TFT_GREEN);
+        tft.fillCircle(rightEyeX, eyeY, eyeRadius, TFT_GREEN);
+        tft.fillCircle(w/2, mouthY, 40, TFT_GREEN);
+        tft.fillCircle(w/2, mouthY - 5, 40, TFT_BLACK); 
+    } 
+    else if (status == "THINKING") {
+        tft.fillCircle(leftEyeX, eyeY, eyeRadius, TFT_BLUE);
+        tft.fillCircle(rightEyeX, eyeY, eyeRadius, TFT_BLUE);
+        tft.fillRect(w/2 - 40, mouthY, 80, 10, TFT_BLUE);
+    } 
+    else {
+        tft.fillCircle(leftEyeX, eyeY, eyeRadius, TFT_RED);
+        tft.fillCircle(rightEyeX, eyeY, eyeRadius, TFT_RED);
+        tft.fillCircle(w/2, mouthY + 10, 20, TFT_WHITE);
+    }
+}
+
+// ==============================
+//      TASK 1: BRAIN (AI)
+// ==============================
+void brainTask(void *pvParameters) {
+    while (true) {
+        if (aiRequestPending) {
+            if(WiFi.status() == WL_CONNECTED) {
+                HTTPClient http;
+                http.setReuse(true); 
+                http.setTimeout(15000); 
+                
+                String url = "https://generativelanguage.googleapis.com/v1beta/" + currentModel + ":generateContent?key=" + GEMINI_API_KEY;
+                http.begin(url);
+                http.addHeader("Content-Type", "application/json");
+
+                chatDoc.clear();
+                responseDoc.clear();
+
+                JsonArray contents = chatDoc.createNestedArray("contents");
+                JsonObject contentObj = contents.createNestedObject();
+                JsonArray parts = contentObj.createNestedArray("parts");
+                JsonObject partObj = parts.createNestedObject();
+                partObj["text"] = "You are Frank, a witty robot assistant. Answer in 1 short sentence. Prompt: I just snapped my fingers.";
+
+                String jsonOutput;
+                serializeJson(chatDoc, jsonOutput);
+                int httpCode = http.POST(jsonOutput);
+                
+                if (httpCode > 0) {
+                    String response = http.getString();
+                    DeserializationError error = deserializeJson(responseDoc, response);
+                    if (!error) {
+                        if (responseDoc.containsKey("candidates")) {
+                             globalResponse = responseDoc["candidates"][0]["content"]["parts"][0]["text"].as<String>();
+                        } else if (responseDoc.containsKey("error")) {
+                             String errMsg = responseDoc["error"]["message"].as<String>();
+                             Serial.print("API ERROR: "); Serial.println(errMsg);
+                             globalResponse = "My API Key is failing me.";
+                        } else if (responseDoc.containsKey("promptFeedback")) {
+                             globalResponse = "Safety Block.";
+                        } else {
+                             globalResponse = "I am confused.";
+                        }
+                    } else {
+                        globalResponse = "JSON Parsing Failed.";
+                    }
+                } else {
+                    Serial.printf("HTTP Error: %d\n", httpCode);
+                    globalResponse = "Internet Error.";
+                }
+                http.end();
+            } else {
+                globalResponse = "No WiFi.";
+            }
+            aiRequestPending = false; 
+            aiResponseReady = true;   
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
+}
+
+// ==============================
+//      TASK 2: ROBOT (Logic)
+// ==============================
+void robotTask(void *pvParameters) {
+    while(true) {
+        // --- 1. HANDLE AI RESPONSE ---
+        if (aiResponseReady) {
+            aiResponseReady = false; 
+            Serial.print("Frank Said: "); Serial.println(globalResponse);
+            
+            drawFace("SPEAKING", TFT_RED);
+            String tts = "https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=" + globalResponse;
+            if (audio) audio->connecttohost(tts.c_str());
+        }
+
+        // --- 2. SPEAKER MODE ---
+        if (inSpeakerMode) {
+            if (audio) audio->loop(); 
+            
+            if (audio && !audio->isRunning() && !aiRequestPending && !aiResponseReady) {
+                 delay(100); 
+                 enterMicMode();
+                 drawFace("LISTENING", TFT_GREEN);
+                 servoX.write(90); servoY.write(90);
+            }
+            
+            if (millis() - lastServoMove > 200) { 
+                int moveX = 90 + random(-10, 10);
+                int moveY = 90 + random(-5, 5);
+                servoX.write(moveX); servoY.write(moveY);
+                lastServoMove = millis();
+            }
+            vTaskDelay(1 / portTICK_PERIOD_MS); 
+        } 
+        
+        // --- 3. LISTENING MODE ---
+        else {
+            if (!aiRequestPending && millis() > micCooldown) {
+                size_t bytesIn = 0;
+                i2s_read(I2S_PORT, &sBuffer, 512, &bytesIn, 0);
+                
+                long sum = 0;
+                int samples = bytesIn / 2;
+                if(samples > 0) {
+                    for (int i = 0; i < samples; i++) sum += abs(sBuffer[i]);
+                    int volume = sum / samples;
+
+                    if (volume > 500) { Serial.print("Volume: "); Serial.println(volume); }
+
+                    if (volume > 1500) { 
+                        Serial.println("Snap Detected! Waking Frank...");
+                        enterSpeakerMode(); 
+                        drawFace("THINKING", TFT_BLUE);
+                        aiRequestPending = true;
+                    }
+                }
+            }
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+        }
+    }
+}
+
+// ==============================
+//      SETUP
+// ==============================
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+    Serial.println("--- FRANK OS STARTING ---");
+    
+    if(psramFound()){
+        Serial.printf("PSRAM Active! Total: %d bytes\n", ESP.getPsramSize());
+    }
+
+    pinMode(SCREEN_RST, OUTPUT);
+    digitalWrite(SCREEN_RST, HIGH); delay(50);
+    digitalWrite(SCREEN_RST, LOW); delay(50);
+    digitalWrite(SCREEN_RST, HIGH); delay(100);
+    tft.init();
+    tft.setRotation(1);
+    tft.invertDisplay(false); 
+    tft.setSwapBytes(true);
+    drawFace("BOOTING...", TFT_WHITE);
+
+    servoX.attach(SERVO_PIN_X);
+    servoY.attach(SERVO_PIN_Y);
+    servoX.write(90); servoY.write(90);
+
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    while (WiFi.status() != WL_CONNECTED) delay(500);
+    drawFace("ONLINE", TFT_GREEN);
+    Serial.println("WiFi Connected");
+    
+    // NOTE: Auto-discovery disabled to prevent "Quota Exceeded" errors.
+    // findValidModel(); 
+    Serial.print("Using Model: "); Serial.println(currentModel);
+    
+    xTaskCreatePinnedToCore(brainTask, "BrainTask", 40960, NULL, 1, &aiTaskHandle, 1);
+    xTaskCreatePinnedToCore(robotTask, "RobotTask", 20480, NULL, 1, NULL, 1);
+
+    inSpeakerMode = true; 
+    enterMicMode();
+}
+
+void loop() {
+    vTaskDelete(NULL); 
+}
