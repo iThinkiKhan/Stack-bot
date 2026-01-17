@@ -52,9 +52,10 @@ DynamicJsonDocument responseDoc(8192);
 String currentModel = "models/gemini-1.5-flash"; // Default backup
 
 // ==============================
-//      HELPER: SMART MODEL SELECTOR
+//      HELPER: SMART MODEL SELECTOR 
 // ==============================
 void findValidModel() {
+//Unable to decode audio files
     Serial.println("--- SEARCHING FOR BEST TEXT MODEL ---");
     if(WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
