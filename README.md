@@ -10,6 +10,8 @@ I also wanted to use common, cheap/salvaged parts and 3d prints I could order fr
 _I believe I have made considerable improvements to the stock firmware, such as removing the local speech processing in favor of sending a raw audio file to the LLM freeing memory and enabling much more nuance in audio processing. I also took memory managment to another level. There are many more, and I continue to improve it regularly. Please share your ideas for improvements!_
 
    **OSv3.0**
+
+   -First spoken prompt recognition!
    -Recording raw WAV file, encoding it and sending to Gemini as a JSON rather than local speech to text
    -Automatically detect ambient noise level, set mic level accordingly
    -Variable spoken prompt length - no wasted bytes. This involves checks and balances.
