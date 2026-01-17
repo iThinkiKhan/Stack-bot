@@ -1,13 +1,14 @@
 # Franken-bot (Frank)
  
-I decided to upgrade the brain and display of the StackChan to improve usability as a desk companion. I also wanted to use common, cheap/salvaged parts and 3d prints I could order from the local library. 
+I decided to upgrade the brain and display (2.8in touch w/ SD card slot) of the StackChan to improve usability as a desk companion. I also wanted to use common, cheap/salvaged parts and 3d prints I could order from the local library.
 
 **Hardware**
-Brain - Lonely Binary ESP32-S3 N16R8. 16MB flash, 8MB octal PSRAM. Powerful chip by esp32 standards. We need it to drive all the functions.
 
-Display - 2.8" IL19341 Touch Screen. SPI interface (important to keep cables down) 320x240 resolution. This should enable us to display all kinds of data effectively, or act as a button, etc. This also gives us an SD slot.
+Brain - _Lonely Binary ESP32-S3 N16R8_.  Dual core FreeRTOS architecture and dynamic driver switching for shared SPI bus. Optimized memory handling.
 
-Movement - 2x SG90 Servos. Can be upgraded to x6 for walking capability (untested).
+Display - _2.8" IL19341 Touch Screen_. SPI interface (important to keep cables down) 320x240 resolution. This should enable us to display all kinds of data effectively, or act as a button, etc. Added SD slot.
+
+Movement - _2x SG90 Servos_. Can be upgraded to x6 for walking capability (untested).
 
 **3D Printing & Assembly**
 
@@ -19,7 +20,7 @@ Head - Case for 2.8" IL19341, bottom power by DorffMeister
     feet_SG90.stl
     bracket_SG90_b.stl
 
-These do not fit together. Rough up the horns and superglue em.
+These cases do not fit together. Rough up the horns of the server arms and and superglue em.
 
 **Software**
 
@@ -50,7 +51,8 @@ This is a "shared SPI" system as much as possible to keep wiring manageable. The
 
 _Build one - prototyping with breadboard_
 
-Several inputs need to share common lines, so we are going to use a breadboard to break out pins for prototyping.
+Several inputs need to share common lines, so we are going to use a breadboard to break out pins for prototyping. Youll notice in the initial build photos this becomes quite a wiring nest. I cleaned it up later with custom cut solid core wire, so if you have the time I recommend starting there. 
+
 --------------------------------------------------------------
 Orange - top red rail - 3.3v
 Red - top blue rail - 5v
