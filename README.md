@@ -112,7 +112,11 @@ GPIO 13: SPI MISO (Shared)
 GPIO 14: Touch CS
 GPIO 21: Screen Reset
 
+**Software:**
 
+**OSv2-multithreading**
+
+My first working RTOS for the system which incorporates all the sensors. I am not a coder, but Gemini sure is. I ended up doing multithreading and some clever memory management (my first stack overflow!) to handle some of the larger functions without crashing the rather small default esp32 void loop. To that end, I spawned two dedicated FreeRTOS tasks with explicit memory allocation. brainTask exclusively handles AI, SSL and JSON processing with a 40KB stack. robotTask handles the I/O and provides 20KB. Void loop was then left empty. There are tons of other bug fixes, but this is confirmed working with everyhting except the SD card. Serves mostly as a proof of concept and launching off point - code is above.  
 
 
 
