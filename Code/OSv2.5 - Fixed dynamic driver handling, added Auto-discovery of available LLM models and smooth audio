@@ -44,18 +44,18 @@ bool aiResponseReady = false;
 String globalResponse = "";        
 
 // --- MEMORY ---
+// We move these to PSRAM if available automatically by the OS allocator
 DynamicJsonDocument chatDoc(4096); 
 DynamicJsonDocument responseDoc(8192);
 
 // --- GEMINI CONFIG ---
-// We will default to flash, but the Setup function will tell us the TRUTH.
-String currentModel = "models/gemini-1.5-flash"; 
+String currentModel = "models/gemini-1.5-flash"; // Default backup
 
 // ==============================
-//      HELPER: MODEL FINDER
+//      HELPER: SMART MODEL SELECTOR
 // ==============================
 void findValidModel() {
-    Serial.println("--- SEARCHING FOR VALID MODELS ---");
+    Serial.println("--- SEARCHING FOR BEST TEXT MODEL ---");
     if(WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
         http.begin("https://generativelanguage.googleapis.com/v1beta/models?key=" + String(GEMINI_API_KEY));
@@ -64,27 +64,43 @@ void findValidModel() {
         if (httpCode > 0) {
             String response = http.getString();
             
-            // AUTOMATIC GREP: Look for "name" fields
             int searchIndex = 0;
+            // Reset to a safe default
+            currentModel = "models/gemini-1.5-flash"; 
+
             while (true) {
                 int nameStart = response.indexOf("\"name\": \"", searchIndex);
-                if (nameStart == -1) break; // No more models
+                if (nameStart == -1) break; 
                 
-                nameStart += 9; // Skip over "name": "
+                nameStart += 9; 
                 int nameEnd = response.indexOf("\"", nameStart);
                 String modelName = response.substring(nameStart, nameEnd);
                 
-                // Print it so the user can see it
-                Serial.print("FOUND MODEL: "); Serial.println(modelName);
+                // --- NEW LOGIC: AVOID TTS, FIND FASTEST TEXT ---
                 
-                // If we find a "flash" model, let's grab it automatically!
-                if (modelName.indexOf("flash") != -1 && modelName.indexOf("legacy") == -1) {
-                    currentModel = modelName; // Auto-select it
+                // Rule 1: skip any model with "tts" or "image" or "vision"
+                // We strictly want text-generation models.
+                if (modelName.indexOf("tts") != -1 || 
+                    modelName.indexOf("image") != -1 || 
+                    modelName.indexOf("vision") != -1) {
+                    searchIndex = nameEnd;
+                    continue;
+                }
+
+                // Priority 1: Gemini 2.0 Flash (The new speed king)
+                if (modelName.indexOf("gemini-2.0-flash") != -1 && modelName.indexOf("exp") == -1) {
+                    currentModel = modelName;
+                    Serial.print(">>> UPGRADE (2.0 Flash): "); Serial.println(currentModel);
+                }
+                // Priority 2: Gemini 1.5 Flash (Reliable backup)
+                else if (modelName.indexOf("gemini-1.5-flash") != -1 && currentModel.indexOf("2.0") == -1) {
+                     currentModel = modelName;
+                     // Silent update
                 }
                 
                 searchIndex = nameEnd;
             }
-            Serial.print(">>> AUTO-SELECTED MODEL: "); Serial.println(currentModel);
+            Serial.print(">>> FINAL SELECTION: "); Serial.println(currentModel);
         } else {
             Serial.printf("ListModels Failed: %d\n", httpCode);
         }
@@ -148,6 +164,18 @@ void enterSpeakerMode() {
     audio->setVolume(18);     
     audio->forceMono(true);   
     
+    // --- PSRAM BUFFERING (The "Anti-Chop" Fix) ---
+    // If PSRAM is active, we can afford a HUGE buffer.
+    // Default is usually ~6KB. We are asking for 100KB.
+    if(psramFound()){
+        // audio->setBufsize(InputBuffer, OutputBuffer);
+        // We set input buffer to 100KB to absorb network jitter
+        audio->setBufsize(100 * 1024, -1); 
+        Serial.println("Audio Buffer: 100KB (PSRAM)");
+    } else {
+        Serial.println("Audio Buffer: Default (No PSRAM)");
+    }
+    
     inSpeakerMode = true;
     Serial.println("--- Speaker Mode Active ---");
 }
@@ -201,8 +229,8 @@ void brainTask(void *pvParameters) {
             if(WiFi.status() == WL_CONNECTED) {
                 HTTPClient http;
                 http.setReuse(true); 
+                http.setTimeout(15000); // 15s patience
                 
-                // USE THE AUTO-DISCOVERED MODEL ID
                 String url = "https://generativelanguage.googleapis.com/v1beta/" + currentModel + ":generateContent?key=" + GEMINI_API_KEY;
                 http.begin(url);
                 http.addHeader("Content-Type", "application/json");
@@ -214,7 +242,9 @@ void brainTask(void *pvParameters) {
                 JsonObject contentObj = contents.createNestedObject();
                 JsonArray parts = contentObj.createNestedArray("parts");
                 JsonObject partObj = parts.createNestedObject();
-                partObj["text"] = "You are a witty robotic desk assistant named Frank. Answer in 1 short sentence. Prompt: I just snapped my fingers, here you are.";
+                
+                // Updated Prompt for Frank
+                partObj["text"] = "You are Frank, a witty robot assistant. Answer in 1 short sentence. Prompt: I just snapped my fingers.";
 
                 String jsonOutput;
                 serializeJson(chatDoc, jsonOutput);
@@ -280,7 +310,6 @@ void robotTask(void *pvParameters) {
                  servoX.write(90); servoY.write(90);
             }
             
-            // Move servos LESS often to save CPU for Audio
             if (millis() - lastServoMove > 200) { 
                 int moveX = 90 + random(-10, 10);
                 int moveY = 90 + random(-5, 5);
@@ -288,8 +317,7 @@ void robotTask(void *pvParameters) {
                 lastServoMove = millis();
             }
             
-            // --- CRITICAL AUDIO FIX ---
-            // DO NOT DELAY HERE. Audio needs 100% speed.
+            // NO DELAY HERE FOR SMOOTH AUDIO
             vTaskDelay(1 / portTICK_PERIOD_MS); 
         } 
         
@@ -315,7 +343,6 @@ void robotTask(void *pvParameters) {
                     }
                 }
             }
-            // Safe to delay when just listening
             vTaskDelay(10 / portTICK_PERIOD_MS);
         }
     }
@@ -328,6 +355,13 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
     Serial.println("--- FRANK OS STARTING ---");
+    
+    // PSRAM CHECK
+    if(psramFound()){
+        Serial.printf("PSRAM Active! Total: %d bytes\n", ESP.getPsramSize());
+    } else {
+        Serial.println("WARNING: No PSRAM Detected!");
+    }
 
     // Screen
     pinMode(SCREEN_RST, OUTPUT);
@@ -351,14 +385,14 @@ void setup() {
     drawFace("ONLINE", TFT_GREEN);
     Serial.println("WiFi Connected");
     
-    // --- RUN AUTO-DISCOVERY ---
+    // Auto-Discovery
     findValidModel(); 
     
     // Tasks
     xTaskCreatePinnedToCore(brainTask, "BrainTask", 40960, NULL, 1, &aiTaskHandle, 1);
     xTaskCreatePinnedToCore(robotTask, "RobotTask", 20480, NULL, 1, NULL, 1);
 
-    // Start in Mic Mode
+    // Start
     inSpeakerMode = true; 
     enterMicMode();
 }
