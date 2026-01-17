@@ -14,7 +14,12 @@ _I believe I have made considerable improvements to the stock firmware, such as 
    -Automatically detect ambient noise level, set mic level accordingly
    -Variable spoken prompt length - no wasted bytes. This involves checks and balances.
    -More memory optimization - working around ESP32s internal heap memory and writing+encoding JSON string in PSRAM. Setting bank of PSRAM aside for audio prompt recordings up to 30 seconds. 
+   -Core exclusivity for threads - Mutexess
+   -Bounds on snprintf to prevent memory runaway
+   -Hardened initial audio driver configuration
+   -Prepare for wake word logic
    -Ditched LLM auto selection and model agnostic framework in favor of immediate functionality. Will add back later.
+   
 
    **OSv2.6**
    -Working LLM response to audio! By far the most complex stack I've ever built.
