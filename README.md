@@ -1,4 +1,4 @@
-# Stack-bot
+# Franken-bot (Frank)
  
 I decided to upgrade the brain and display of the bot, primarily. I also wanted to use common parts and 3d prints I could order from the local library. 
 
