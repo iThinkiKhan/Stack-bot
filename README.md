@@ -46,7 +46,7 @@ Secrets Management
 API keys and WiFi credentials are stored in a non-tracked src/Secrets.h file to prevent accidental leaks.
 
 **Wiring**
-This is a "shared SPI" system as much as possible to keep wiring manageable. The screen is a shared SPI, meaning touch, screen and SD card all use the same same MOSI MISO and SCK, but they have different CS pins to distinguish them.
+This is a "shared SPI" system as much as possible to keep wiring manageable. The screen is a shared SPI, meaning touch, screen and SD card all use the same same MOSI MISO and SCK, but they have different CS pins to distinguish them. I later implement dynamic driver installation in the code to futher distinguish these.
 
 _Build one - prototyping with breadboard_
 
