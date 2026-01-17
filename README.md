@@ -33,16 +33,22 @@ _I believe I have made considerable improvements to the stock firmware, such as 
    
 
    **OSv2.6**
+   
    -Working LLM response to audio! By far the most complex stack I've ever built.
+   
    -Automatic model selection put on hold after much API wrestling. (gemini-flash-latest).
+   
    -Added local database of randomized prompts and local database in case of LLM failure. (redacted from code section OS2.6)
 
 
    **OSv2.5 'Frank'** 
 
    -Fixed dynamic driver handling - automatic handling had many bugs, mostly pointer resolution after automatic delete of     previous driver
+   
    -Smoothed audio - fixed a looping issue that caused audio stutter, added 100KB buffer in PSRAM for audio to address latency, forced mono mode
+   
    -Auto-Model Select - Frank will now look at available Gemini models and choose the best one for him. _NOT ABLE TO USE TEXT TO SPEECH MODELS YET_
+   
    -Changed name from Stack-bot to Franken-bot. Codename 'Frank'
 
    **OSv2-multithreading**
