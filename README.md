@@ -1,6 +1,27 @@
 # Franken-bot (Frank)
  
-I decided to upgrade the brain and display (2.8in touch w/ SD card slot) of the StackChan to improve usability as a desk companion. I also wanted to use common, cheap/salvaged parts and 3d prints I could order from the local library.
+I decided to upgrade the brain and display (2.8in touch w/ SD card slot) of the StackChan to improve usability as a desk companion. I also wanted to use common, cheap/salvaged parts and 3d prints I could order from the local library. This is code is 100% original and shares no lines in common with the official firmware. 
+
+**Software:**
+_I believe I have made considerable improvements to the stock firmware, such as removing the local speech processing in favor of sending a raw audio file to the LLM. There are many more, and I continue to improve it regularly. Please share your ideas for improvements!_
+
+   **OSv2.6**
+   -Working LLM response to audio! By far the most complex stack I've ever built.
+   -Automatic model selection put on hold after much API wrestling. (gemini-flash-latest).
+   -Added local database of randomized prompts and local database in case of LLM failure. (redacted from code section OS2.6)
+
+
+   **OSv2.5 'Frank'** 
+
+   -Fixed dynamic driver handling - automatic handling had many bugs, mostly pointer resolution after automatic delete of     previous driver
+   -Smoothed audio - fixed a looping issue that caused audio stutter, added 100KB buffer in PSRAM for audio to address latency, forced mono mode
+   -Auto-Model Select - Frank will now look at available Gemini models and choose the best one for him. _NOT ABLE TO USE TEXT TO SPEECH MODELS YET_
+   -Changed name from Stack-bot to Franken-bot. Codename 'Frank'
+
+   **OSv2-multithreading**
+
+   My first working RTOS for the system which incorporates all the sensors. I am not a coder, but Gemini sure is. I ended up doing multithreading and some clever memory management (my first stack overflow!) to handle some of the larger functions without crashing the rather small default esp32 void loop. To that end, I spawned two dedicated FreeRTOS tasks with explicit memory allocation. brainTask exclusively handles AI, SSL and JSON processing with a 40KB stack. robotTask handles the I/O and provides 20KB. Void loop was then left empty. I also implemented dynamic driver swapping, which uninstalls the mic or speaker driver before installing the other. The global JSON buffers were moved to heap memory as well, since the buffers get massive. There are tons of other bug fixes, like properly sharing the buses, but this is confirmed working with everyhting except the SD card. Serves mostly as a proof of concept and launching off point - code is above under OSv2 - multithreading.  
+
 
 **Hardware**
 
@@ -21,20 +42,6 @@ Head - Case for 2.8" IL19341, bottom power by DorffMeister
     bracket_SG90_b.stl
 
 These cases do not fit together. Rough up the horns of the server arms and and superglue em.
-
-
-**Software:**
-
-**OSv2.5 'Frank'** 
-
--Fixed dynamic driver handling - automatic handling had many bugs, mostly pointer resolution after automatic delete of previous driver
--Smoothed audio - fixed a looping issue that caused audio stutter, added 100KB buffer in PSRAM for audio to address latency, forced mono mode
--Auto-Model Select - Frank will now look at available Gemini models and choose the best one for him. _NOT ABLE TO USE TEXT TO SPEECH MODELS YET_
--Changed name from Stack-bot to Franken-bot. Codename 'Frank'
-
-**OSv2-multithreading**
-
-My first working RTOS for the system which incorporates all the sensors. I am not a coder, but Gemini sure is. I ended up doing multithreading and some clever memory management (my first stack overflow!) to handle some of the larger functions without crashing the rather small default esp32 void loop. To that end, I spawned two dedicated FreeRTOS tasks with explicit memory allocation. brainTask exclusively handles AI, SSL and JSON processing with a 40KB stack. robotTask handles the I/O and provides 20KB. Void loop was then left empty. I also implemented dynamic driver swapping, which uninstalls the mic or speaker driver before installing the other. The global JSON buffers were moved to heap memory as well, since the buffers get massive. There are tons of other bug fixes, like properly sharing the buses, but this is confirmed working with everyhting except the SD card. Serves mostly as a proof of concept and launching off point - code is above under OSv2 - multithreading.  
 
 
 
