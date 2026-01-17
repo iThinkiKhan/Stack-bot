@@ -25,6 +25,13 @@ These cases do not fit together. Rough up the horns of the server arms and and s
 
 **Software:**
 
+**OSv2.5 'Frank'** 
+
+-Fixed dynamic driver handling - automatic handling had many bugs, mostly pointer resolution after automatic delete of previous driver
+-Smoothed audio - fixed a looping issue that caused audio stutter, added 100KB buffer in PSRAM for audio to address latency, forced mono mode
+-Auto-Model Select - Frank will now look at available Gemini models and choose the best one for him. _NOT ABLE TO USE TEXT TO SPEECH MODELS YET_
+-Changed name from Stack-bot to Franken-bot. Codename 'Frank'
+
 **OSv2-multithreading**
 
 My first working RTOS for the system which incorporates all the sensors. I am not a coder, but Gemini sure is. I ended up doing multithreading and some clever memory management (my first stack overflow!) to handle some of the larger functions without crashing the rather small default esp32 void loop. To that end, I spawned two dedicated FreeRTOS tasks with explicit memory allocation. brainTask exclusively handles AI, SSL and JSON processing with a 40KB stack. robotTask handles the I/O and provides 20KB. Void loop was then left empty. I also implemented dynamic driver swapping, which uninstalls the mic or speaker driver before installing the other. The global JSON buffers were moved to heap memory as well, since the buffers get massive. There are tons of other bug fixes, like properly sharing the buses, but this is confirmed working with everyhting except the SD card. Serves mostly as a proof of concept and launching off point - code is above under OSv2 - multithreading.  
